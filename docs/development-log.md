@@ -7,8 +7,8 @@
 | 阶段 | 状态 | 备注 |
 |---|---|---|
 | core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
-| domain | 未开始 | 待补实体不变量与纯领域测试 |
-| datastore | 未开始 | 待补 repository + UoW 可用实现 |
+| domain | 进行中 | 已补首批 research/trading/strategy 不变量与纯领域测试，继续扩展子域 |
+| datastore | 进行中 | 已补 strategy/trading repository 契约与 InMemory UoW 参考实现 |
 | datahub | 未开始 | 待打通数据同步与清洗最小链路 |
 | factor_engine | 未开始 | 待补最小算子与执行器 |
 | analysis_engine | 未开始 | 待补最小指标与报告产物 |
@@ -23,7 +23,7 @@
 
 ## 下一步（按优先级）
 
-1. 启动 `domain` 阶段：先补 research/trading 核心实体不变量测试。
+1. 进入 `domain` 扩展阶段：继续补齐 strategy/platform 子域实体和值对象不变量。
 2. 并行设计 `datastore` repository 接口契约，确保不向业务层泄漏查询细节。
 3. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
 4. 通过 `task_engine + research_worker` 异步化研究任务。
@@ -38,6 +38,87 @@
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-07｜Phase C 启动：repository 契约与 UoW 参考实现
+
+**本次变更**
+- 新增 `StrategyRepository/TradingRepository` 抽象契约与 `InMemory` 参考实现，用于约束业务层访问边界。
+- 新增 `MongoUnitOfWork` 最小实现，提供 `strategy_repository`、`trading_repository` 聚合访问与 commit/rollback 生命周期。
+- 新增 `tests/unit/datastore/test_repository_contracts.py`，覆盖 repository round-trip 与 UoW 提交行为。
+
+**阶段影响**
+- `datastore` 阶段进入“进行中”，已具备可测试的 repository + UoW 契约骨架，为后续 Mongo/Redis 真正接入铺路。
+
+### 2026-04-07｜Phase B 扩展：strategy 信号到调仓计划服务
+
+**本次变更**
+- 完成 `Signal` 与 `TargetPosition` 实体最小实现，补齐标的标准化与分数/权重约束。
+- 完成 `RebalanceService.build_plan`：支持按分数筛选正向信号、Top-N 截断与单票上限约束；新增迭代分配逻辑，确保上限约束在最终目标权重中仍然成立。
+- 新增 `tests/unit/domain/test_rebalance_service.py`，覆盖正向建仓、无正信号拒绝、分数范围约束与单票上限生效。
+
+**阶段影响**
+- strategy 子域具备首个可执行 domain service，可直接支撑后续 `portfolio_engine` 输入生成。
+
+### 2026-04-07｜Phase B 扩展：value object 首批落地
+
+**本次变更**
+- 完成 research 子域值对象：`FactorCode`（代码非空校验）与 `BacktestConfig`（日期区间与资金约束）。
+- 完成 trading 子域值对象：`Money`（币种一致性与加减法约束）与 `OrderRequest`（下单参数与标的标准化）。
+- 新增 `tests/unit/domain/test_value_objects.py`，覆盖构造校验与核心运算约束。
+
+**阶段影响**
+- 领域层开始具备“实体 + 值对象”双维约束能力，为后续 domain service 编排提供稳定输入边界。
+
+### 2026-04-07｜Phase B 加固：失败原因显式化与调仓目标规范化
+
+**本次变更**
+- 将 `OrderStatus/OrderSide/FactorRunStatus` 提取到 `packages/core/core/enums`，避免在 domain 实体内重复定义。
+- `FactorRun.transition_to(FAILED)` 调整为必须显式提供 `error_message`，禁止默认兜底文案，避免故障根因丢失。
+- `RebalancePlan` 新增目标代码标准化（统一大写）与“权重必须为正数”约束，避免零权重噪音目标进入下游流程。
+- 扩展纯领域单测，覆盖上述规则的正反场景。
+
+**阶段影响**
+- 研究与策略子域在错误可观测性和输入标准化方面更一致，可减少后续编排层分支处理复杂度。
+
+### 2026-04-07｜Phase B 加固：构造态一致性校验
+
+**本次变更**
+- 为 `Order` 增加构造态一致性校验：`SUBMITTED/FILLED` 状态必须具备 `submitted_at`，`FILLED` 必须具备 `filled_at` 且时间先后合法。
+- 为 `FactorRun` 增加构造态一致性校验：运行/结束态必须具备起止时间，`FAILED` 必须包含错误信息，`SUCCEEDED` 禁止携带错误信息。
+- 扩展单测覆盖构造态非法输入（通过 `InvariantViolationError` 校验），并保持状态迁移单测通过。
+
+**阶段影响**
+- 领域对象在“构造时”和“迁移时”均具备约束，降低脏数据绕过迁移方法直接入模的风险。
+
+### 2026-04-07｜Phase B 修正：订单状态迁移原子性
+
+**本次变更**
+- 修复 `Order.transition_to` 中 `FILLED` 校验时机，先校验 `submitted_at` 再写入状态，避免异常时状态被提前污染。
+- 新增单测验证非法 `SUBMITTED -> FILLED`（缺少 `submitted_at`）时，订单状态保持不变。
+
+**阶段影响**
+- 领域实体状态迁移具备更好的原子性，减少异常路径下的数据不一致风险。
+
+### 2026-04-07｜Phase B 跟进：统一领域异常与约束细化
+
+**本次变更**
+- 将 `order/factor_run/rebalance_plan` 的不变量报错统一为 `InvariantViolationError`，避免使用通用 `ValueError`。
+- 增加 `rebalance_plan` 空目标校验，要求调仓计划至少包含一个标的。
+- 增加 `factor_run` 非法状态跳转测试与 `rebalance_plan` 空目标测试，强化规则覆盖。
+
+**阶段影响**
+- 领域规则错误类型与跨层错误码语义对齐，便于 API 层后续统一映射。
+
+### 2026-04-07｜Phase B 启动：domain 首批不变量落地
+
+**本次变更**
+- 为 `trading.order` 增加最小生命周期模型与状态迁移约束（PENDING/SUBMITTED/FILLED/CANCELED/REJECTED）。
+- 为 `research.factor_run` 增加执行状态约束（PENDING/RUNNING/SUCCEEDED/FAILED）与时间戳管理。
+- 为 `strategy.rebalance_plan` 增加调仓权重不变量校验（单票非负、总权重不超过 1.0）。
+- 新增 `tests/unit/domain/test_domain_invariants.py`，覆盖上述领域规则，保持纯领域测试（不依赖数据库/HTTP）。
+
+**阶段影响**
+- `domain` 阶段进入“进行中”，已具备首批可执行不变量示例，后续补齐更多实体和值对象。
 
 ### 2026-04-07｜Phase A 执行：core 最小可用实现
 
