@@ -1,62 +1,63 @@
 # Development Log
 
-## 2026-04-07（重构后工作流重设计）
+> 目标：记录 OpenQuant 按 `docs/workflow.md` 推进的阶段进展，保证每次提交可追溯。
 
-### 背景
+## 当前快照（截至 2026-04-07）
 
-上一版提交完成了目录重排，但存在两个问题：
-1. 占位模块多、落地路径不清晰；
-2. 没有按“最小闭环”组织推进顺序。
-
-因此本次对交付流程做了**重新设计与完整记录**。
-
-### 本次变更
-
-- 重写 `docs/workflow.md`，改为严格分阶段顺序：
-  `core -> domain -> datastore -> datahub -> factor_engine -> analysis_engine -> api_service -> task_engine+research_worker -> portfolio_engine -> risk_engine -> broker_adapters/simulator -> trading_engine+trading_worker -> 真实券商 -> llm+web`。
-- 将 `MVP 最小闭环` 明确为 7 个可验收步骤：
-  数据入库、创建因子、运行因子、生成回测报告、生成调仓计划、模拟下单、查询订单/持仓/账户。
-- 增加每阶段统一记录模板，确保后续提交可以审计与回放。
-
-### 当前阶段状态盘点
-
-| 阶段 | 状态 | 说明 |
+| 阶段 | 状态 | 备注 |
 |---|---|---|
-| core | 进行中 | 目录存在，待补全 settings/logging/exception 细节实现 |
-| domain | 未开始 | 仅骨架，缺实体不变量和规则测试 |
-| datastore | 未开始 | 需完成 repository + UoW 可用实现 |
-| datahub | 未开始 | 需完成数据同步与清洗最小链路 |
-| factor_engine | 未开始 | 需先完成最小算子和执行器 |
-| analysis_engine | 未开始 | 需完成最小指标和报告产物 |
-| api_service | 进行中 | 仅 health + root，业务路由未实现 |
+| core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
+| domain | 未开始 | 待补实体不变量与纯领域测试 |
+| datastore | 未开始 | 待补 repository + UoW 可用实现 |
+| datahub | 未开始 | 待打通数据同步与清洗最小链路 |
+| factor_engine | 未开始 | 待补最小算子与执行器 |
+| analysis_engine | 未开始 | 待补最小指标与报告产物 |
+| api_service | 进行中 | 目前仅 health/root，业务路由待实现 |
 | task_engine + research_worker | 未开始 | 任务流转未落地 |
 | portfolio_engine | 未开始 | 仓位与订单意图未实现 |
 | risk_engine | 未开始 | 风控规则未实现 |
 | broker simulator | 未开始 | 模拟撮合未实现 |
 | trading_engine + trading_worker | 未开始 | 交易主流程未实现 |
 | 真实券商 | 未开始 | 依赖模拟链路稳定后接入 |
-| llm + web | 未开始 | 放在最后收口 |
+| llm + web | 未开始 | 最后收口 |
 
-### 下一步执行计划（按优先级）
+## 下一步（按优先级）
 
-1. 完成 `core` 可用实现（配置、日志、异常、基础模型）并补单测。
-2. 落地 `domain + datastore` 最小可用版本（因子定义/版本/运行记录仓储）。
+1. 启动 `domain` 阶段：先补 research/trading 核心实体不变量测试。
+2. 并行设计 `datastore` repository 接口契约，确保不向业务层泄漏查询细节。
 3. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
 4. 通过 `task_engine + research_worker` 异步化研究任务。
 5. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
 
-### 风险与约束
+## 风险与约束
 
-- 当前仓库仍以骨架为主，业务功能未可用。
-- 需要优先控制“跨层直接依赖”风险，避免重新耦合为大模块。
-- 建议每个 phase 都以可执行测试和示例脚本作为退出条件。
+- 仓库当前仍以骨架为主，业务功能尚未完全可用。
+- 需严格控制跨层直接依赖，避免再次耦合为大模块。
+- 建议每个 Phase 以“可执行测试 + 示例脚本”作为退出条件。
 
 ---
 
-## 历史记录（保留）
+## 变更记录（按时间倒序）
 
-### 2026-04-07（Phase 1 初始骨架）
+### 2026-04-07｜Phase A 执行：core 最小可用实现
 
-- 建立 `apps/`、`packages/`、`docs/`、`tests/` 结构
-- 初始化服务骨架和若干基础包
-- 完成最初版架构说明与工作流文档
+**本次变更**
+- 完成 `packages/core` 基础异常体系：`OpenQuantError` + `Domain/Infra` 分层异常及结构化序列化。
+- 完成日志基础设施增强：统一日志格式、避免重复 handler、新增审计事件 `emit_audit_event`。
+- 完成配置基础能力增强：`Settings` 增加环境枚举限制与 `get_settings()` 单例缓存。
+- 增加 `CoreModel` 作为跨包统一基础模型配置。
+- 新增 core 单元测试，覆盖配置读取、日志工厂行为、异常序列化。
+
+**阶段影响**
+- `core` 进入“最小可用”阶段，可支撑后续模块接入。
+
+### 2026-04-07｜工作流重设计
+
+**背景**
+- 需要把工程直接拉回到“最小闭环优先”的交付节奏。
+- 需要统一阶段记录格式，确保每次提交都可审计、可回放。
+
+**本次变更**
+- 重写 `docs/workflow.md`，明确 Phase A~N 严格顺序。
+- 将 MVP 闭环明确为 7 步：数据入库、创建因子、运行因子、生成报告、生成调仓计划、模拟下单、查询结果。
+- 增加每阶段统一记录模板，支持后续审计与回放。
