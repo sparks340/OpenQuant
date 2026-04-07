@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  openquant-mongo:
+    image: mongo:7
+    container_name: openquant-mongo
+    ports:
+      - "27017:27017"
+
+  openquant-redis:
+    image: redis:7
+    container_name: openquant-redis
+    ports:
+      - "6379:6379"

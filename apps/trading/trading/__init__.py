@@ -1,0 +1,2 @@
+"""Trading worker package."""
+
