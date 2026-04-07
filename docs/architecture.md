@@ -1,36 +1,29 @@
-﻿# Architecture
+# OpenQuant Architecture
 
-> Project Name: `OpenQuant`
+## 分层原则
 
-## Goal
+1. **接入层（apps）**：只负责协议接入、参数校验、鉴权、调用应用服务。
+2. **领域层（packages/domain）**：沉淀业务语义与领域规则，不依赖 Web/DB 细节。
+3. **能力层（engines）**：因子、分析、组合、风控、交易等能力模块化。
+4. **适配层（adapters）**：数据源、券商接口隔离。
+5. **基础设施层（core/datastore/task）**：配置、日志、数据访问、任务编排。
 
-`OpenQuant` 按“研究域”和“交易域”分离的方式构建，避免把因子、回测、策略、交易、风控全部堆在一个服务里。
+## 服务边界
 
-## Service Layer
+- `api_service`：统一 API 网关。
+- `research_worker`：研究计算执行器。
+- `trading_worker`：交易执行器。
+- `scheduler_service`：定时任务调度器。
+- `llm_service`：助手服务。
+- `web_app`：前端应用。
 
-- `apps/api`: 对外提供 API
-- `apps/research`: 执行因子与回测任务
-- `apps/trading`: 执行调仓、下单和同步任务
-- `apps/scheduler`: 调度定时任务
-- `apps/llm`: 提供因子和交易助手能力
+## 关键约束
 
-## Package Layer
+- API 不承载核心计算。
+- 业务代码不得散写数据库查询，统一走 repository。
+- 订单发往券商前必须通过 `risk_engine`。
+- 研究输出（因子/信号）经 `portfolio_engine` 转换为交易意图。
 
-- `core`: 配置、日志、基础模型、枚举
-- `domain`: 领域对象和领域规则
-- `datastore`: 仓储与数据访问
-- `task_engine`: 统一任务分发与跟踪
-- `sdk`: 外部脚本调用入口
+## 现状
 
-## Delivery Strategy
-
-项目按阶段推进：
-
-1. 基础工程与目录搭建
-2. 领域模型与仓储接口
-3. 数据接入
-4. 因子引擎
-5. 分析引擎
-6. 研究 API 与异步任务
-7. 策略、组合、仿真交易
-8. 实盘交易、风控与监控
+本次重构完成目录结构与占位模块搭建，为后续逐模块填充实现提供稳定边界。
