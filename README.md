@@ -1,4 +1,4 @@
-﻿# OpenQuant
+# OpenQuant
 
 `OpenQuant` 是一个模块化的量化平台项目，目标是逐步落地以下能力：
 
@@ -49,22 +49,3 @@ uvicorn apps.api.api.main:app --reload
 - `docs/development-log.md`
 - `docs/architecture.md`
 - `docs/github-upload.md`
-
-## 上传到自己的 GitHub
-
-建议统一使用下面这套命名：
-
-- 本地目录名：`openquant`
-- GitHub 仓库名：`openquant` 或 `OpenQuant`
-- 项目展示名：`OpenQuant`
-- Python 项目名：`openquant`
-
-首次提交可以使用：
-
-```bash
-git add .
-git commit -m "Initialize OpenQuant platform scaffold"
-git remote add origin https://github.com/<your-name>/openquant.git
-git branch -M main
-git push -u origin main
-```
