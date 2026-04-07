@@ -4,13 +4,18 @@ We centralize runtime configuration here so later services can reuse a single
 source of truth instead of each module hand-loading environment variables.
 """
 
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables or a local .env file."""
 
-    app_env: str = "dev"
+    app_env: Literal["dev", "test", "staging", "prod"] = "dev"
     log_level: str = "INFO"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -24,5 +29,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    """Return singleton settings object used by all packages."""
+    return Settings()
 
+
+settings = get_settings()
