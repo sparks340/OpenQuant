@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 
 from packages.domain.domain.trading.entities.order import Order
 
@@ -38,3 +39,9 @@ class InMemoryTradingRepository(TradingRepository):
 
     def list_orders(self, account_id: str) -> list[Order]:
         return [order for order in self._orders.values() if order.account_id == account_id]
+    def snapshot(self) -> dict[str, Order]:
+        return deepcopy(self._orders)
+
+    def restore(self, state: dict[str, Order]) -> None:
+        self._orders = deepcopy(state)
+

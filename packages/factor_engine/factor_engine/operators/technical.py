@@ -1,1 +1,1 @@
-"""Placeholder module for the new architecture."""
+"""Technical operators placeholder for future extension."""

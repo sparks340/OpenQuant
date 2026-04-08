@@ -2,15 +2,15 @@
 
 > 目标：记录 OpenQuant 按 `docs/workflow.md` 推进的阶段进展，保证每次提交可追溯。
 
-## 当前快照（截至 2026-04-07）
+## 当前快照（截至 2026-04-08）
 
 | 阶段 | 状态 | 备注 |
 |---|---|---|
 | core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
-| domain | 进行中 | 已补首批 research/trading/strategy 不变量与纯领域测试，继续扩展子域 |
-| datastore | 进行中 | 已补 strategy/trading repository 契约与 InMemory UoW 参考实现 |
-| datahub | 未开始 | 待打通数据同步与清洗最小链路 |
-| factor_engine | 未开始 | 待补最小算子与执行器 |
+| domain | 已完成 | research/strategy/trading/platform 四子域实体、值对象、领域服务已形成最小闭环并具备纯领域测试覆盖 |
+| datastore | 已完成 | Mongo/Redis 客户端管理、Repository 与 UoW 已补齐，含 CRUD+查询 integration tests |
+| datahub | 已完成 | 已落地 CSV/Tushare(Stub) 适配、清洗与标准化入库链路，含 integration tests |
+| factor_engine | 已完成 | 已实现公式校验/执行与最小算子集（RANK/DELAY/TS_MEAN），含可复现单测 |
 | analysis_engine | 未开始 | 待补最小指标与报告产物 |
 | api_service | 进行中 | 目前仅 health/root，业务路由待实现 |
 | task_engine + research_worker | 未开始 | 任务流转未落地 |
@@ -23,11 +23,9 @@
 
 ## 下一步（按优先级）
 
-1. 进入 `domain` 扩展阶段：继续补齐 strategy/platform 子域实体和值对象不变量。
-2. 并行设计 `datastore` repository 接口契约，确保不向业务层泄漏查询细节。
-3. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
-4. 通过 `task_engine + research_worker` 异步化研究任务。
-5. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
+1. 进入 `analysis_engine` 阶段：补齐最小指标与报告产物。
+2. 通过 `task_engine + research_worker` 异步化研究任务。
+3. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
 
 ## 风险与约束
 
@@ -35,9 +33,107 @@
 - 需严格控制跨层直接依赖，避免再次耦合为大模块。
 - 建议每个 Phase 以“可执行测试 + 示例脚本”作为退出条件。
 
+## 历史 Review 风险台账（截至 2026-04-08）
+
+> 目的：集中记录历次评审中识别的风险点，避免分散在对话中丢失。
+
+1. **Domain 建模深度风险（Phase B）**
+   - 当前不少实体/服务仍为 MVP 级最小实现，字段语义与边界规则可能在后续阶段继续收敛。
+   - `task_type`、`TaskLogLevel` 等字符串/枚举存在跨系统映射风险，后续接入外部服务时需统一映射表。
+   - `sequence` 仅校验正数，跨进程并发时的单调递增约束尚未在持久层保证。
+
+2. **Datastore 落地风险（Phase C）**
+   - 当前 Mongo/Redis 客户端为 in-memory 实现，与真实后端在索引行为、查询性能、事务语义上存在差异。
+   - `MongoUnitOfWork` 回滚基于 snapshot/restore，适用于本地测试，不等价于真实数据库事务。
+   - 进入真实持久层时需重点验证 repository 边界不被业务层绕过（禁止裸查询回流到业务代码）。
+
+3. **Datahub 数据质量风险（Phase D）**
+   - `TushareDataAdapter` 仍是 stub，真实接入前缺少鉴权、限流、失败重试与监控。
+   - 清洗规则当前主要覆盖 symbol/date/数值标准化，尚未系统覆盖停牌、复权、缺失交易日等边界场景。
+
+4. **Factor Engine 扩展风险（Phase E）**
+   - 公式解析器目前仅支持 MVP 单层表达式，复杂嵌套表达式与错误定位能力不足。
+   - `python_executor` 仅提供最小校验，尚未具备真正沙箱执行的资源限制与安全隔离。
+   - 算子集目前仅 `RANK/DELAY/TS_MEAN`，后续扩展需保证兼容性与回归测试稳定性。
+
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-08｜Phase E 完成：factor_engine 校验/执行/算子最小闭环
+
+**本次变更**
+- 先补测试：新增 `tests/unit/factor_engine/test_phase_e_factor_engine.py`，覆盖表达式校验、非法表达式拦截、`RANK/DELAY/TS_MEAN` 执行结果一致性。
+- 补实现：完成 `FactorFrame/ValidationResult` 模型、`formula_parser`、`FormulaValidator`、`FormulaExecutor` 与 `FactorExecutorService`。
+- 补实现：完成最小算子集 `RANK/DELAY/TS_MEAN`，并补齐 `python_executor` 最小校验与运行时上下文模型。
+- 保持输出可复现：同一输入行情可稳定得到同一 `factor_frame`。
+
+**阶段影响**
+- Phase E 退出条件满足：表达式校验与执行具备单测覆盖，输入行情可产出可复现因子值。下一步进入 Phase F（analysis_engine）。
+
+### 2026-04-08｜Phase D 完成：datahub 适配/清洗/入库最小链路
+
+**本次变更**
+- 先补测试：新增 `tests/integration/datahub/test_phase_d_datahub.py`，覆盖行情、标的、基础因子三条同步链路的清洗与落库行为。
+- 补实现：完成 `CSVDataAdapter` 与 `TushareDataAdapter(stub)`，统一通过 `DataSourceAdapter` 协议输出原始行数据。
+- 补实现：完成 `market/instrument/base_factor` cleaner 与 `symbol_mapper/trading_calendar` 工具，统一代码、日期、数值格式。
+- 补实现：完成 `sync_market_data/sync_instruments/sync_base_factors` 服务，并补齐 `InMemoryInstrumentRepository` 作为标的入库承载。
+
+**阶段影响**
+- Phase D 退出条件满足：`sync_*` 服务可将样例数据清洗后写入 datastore，字段映射与代码/日期格式统一。下一步进入 Phase E（factor_engine）。
+
+### 2026-04-08｜Phase C 完成：datastore 客户端/仓储/UoW 与集成测试闭环
+
+**本次变更**
+- 先补测试：新增 `tests/integration/datastore/test_datastore_phase_c.py`，覆盖 Mongo/Redis 客户端基本操作、索引初始化、repository CRUD+查询、UoW 异常回滚。
+- 补实现：完成 `mongo.client/collections/indexes` 与 `redis.client` 最小可用实现，支持后续 datahub/task_engine 接入。
+- 补实现：完成 `factor/task/market_data` repository in-memory 实现，并增强 `strategy/trading` repository snapshot/restore 能力。
+- 补实现：扩展 `MongoUnitOfWork` 聚合 `factor/strategy/trading/task` 仓储，支持进入上下文时快照、异常路径回滚。
+
+**阶段影响**
+- Phase C 退出条件满足：repository CRUD+查询具备 integration test 覆盖，业务层可通过 repository/UoW 访问持久层边界。下一步进入 Phase D（datahub）。
+
+### 2026-04-08｜Phase B 完成：domain 四子域最小闭环达成
+
+**本次变更**
+- 先补测试：新增 `tests/unit/domain/test_phase_b_entities_and_services.py`，覆盖 research/strategy/trading/platform 新增实体与服务的关键不变量与迁移规则。
+- 补实现：清理 domain 中剩余 placeholder，补齐 platform（`User/ChatSession/TaskService`）、research（`FactorVersion/FactorValue/AnalysisReport` 与 domain services）、strategy（`StrategyDefinition/StrategyVersion/SignalService`）、trading（`Account/Position/Trade/BrokerConnection` 与 domain services）最小实现。
+- 对齐状态约束：补齐 `StrategyVersion`、`BrokerConnection` 迁移规则与错误路径，保证领域层状态机可测试。
+- 纯领域测试全量通过，形成不依赖数据库/HTTP 的可回归基线。
+
+**阶段影响**
+- Phase B 退出条件满足：domain 四子域具备实体/值对象/领域服务与关键不变量，且测试可执行。下一步可进入 Phase C（datastore）收敛。
+
+### 2026-04-08｜Phase B 跟进：platform 任务日志实体不变量
+
+**本次变更**
+- 先补测试：新增 `tests/unit/domain/test_task_log.py`，覆盖日志级别规范化、创建时间默认值、身份/消息非空与序号正数约束。
+- 补实现：新增 `TaskLogLevel(INFO/WARNING/ERROR)` 与 `TaskLog` 实体，实现 `task_id/message` 非空、`sequence>0`、`created_at` UTC 默认写入。
+- 通过纯领域测试回归，确保 platform 子域日志对象可被后续 task_engine 直接复用。
+
+**阶段影响**
+- platform 子域除 `TaskRecord` 外新增可执行日志实体，任务追踪在 domain 层形成“状态 + 事件”双模型基础。
+
+### 2026-04-08｜Phase B 修正：TaskRecord 构造语义与身份字段约束
+
+**本次变更**
+- 先补测试：新增 `TaskRecord` 创建时间自动生成与身份字段非空校验测试（TDD），用于约束任务记录初始语义。
+- 补实现：`TaskRecord.created_at` 调整为构造时默认写入 UTC 时间，避免记录在首次迁移前缺失创建时间。
+- 补实现：新增 `task_id/task_type` 非空校验，不允许空白标识进入领域模型。
+- 保持生命周期不变量与迁移规则不变，继续通过纯领域单测回归。
+
+**阶段影响**
+- platform 子域任务实体从“可迁移”提升到“可审计（创建时间稳定）+ 可识别（身份字段必填）”，为后续 task_engine 任务追踪提供更稳输入。
+
+### 2026-04-08｜Phase B 跟进：platform 任务生命周期不变量
+
+**本次变更**
+- 完成 `platform.task_record` 生命周期模型，补齐状态迁移约束（PENDING/RUNNING/SUCCESS/FAILED）与时间戳字段一致性校验。
+- 约束失败态必须显式提供 `error_message`，成功态禁止携带错误信息，避免任务结果语义不清。
+- 新增 `tests/unit/domain/test_task_record.py`，覆盖合法迁移、非法跳转与失败原因必填等规则。
+
+**阶段影响**
+- platform 子域开始具备可执行任务状态约束，可作为后续 `task_engine + research_worker` 状态机的领域基座。
 
 ### 2026-04-07｜Phase C 启动：repository 契约与 UoW 参考实现
 

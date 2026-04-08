@@ -1,1 +1,1 @@
-"""Placeholder module for the new architecture."""
+"""Ricequant adapter stub for future extension."""
