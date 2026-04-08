@@ -8,7 +8,7 @@
 |---|---|---|
 | core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
 | domain | 已完成 | research/strategy/trading/platform 四子域实体、值对象、领域服务已形成最小闭环并具备纯领域测试覆盖 |
-| datastore | 进行中 | 已补 strategy/trading repository 契约与 InMemory UoW 参考实现 |
+| datastore | 已完成 | Mongo/Redis 客户端管理、Repository 与 UoW 已补齐，含 CRUD+查询 integration tests |
 | datahub | 未开始 | 待打通数据同步与清洗最小链路 |
 | factor_engine | 未开始 | 待补最小算子与执行器 |
 | analysis_engine | 未开始 | 待补最小指标与报告产物 |
@@ -23,8 +23,8 @@
 
 ## 下一步（按优先级）
 
-1. 进入 `datastore` 收敛阶段：补齐 Mongo/Redis 客户端管理、UoW 与集成测试。
-2. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
+1. 进入 `datahub` 阶段：补齐数据源适配、清洗与标准化入库链路。
+2. 打通 `factor_engine -> analysis_engine` 的研究链路。
 3. 通过 `task_engine + research_worker` 异步化研究任务。
 4. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
 
@@ -37,6 +37,17 @@
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-08｜Phase C 完成：datastore 客户端/仓储/UoW 与集成测试闭环
+
+**本次变更**
+- 先补测试：新增 `tests/integration/datastore/test_datastore_phase_c.py`，覆盖 Mongo/Redis 客户端基本操作、索引初始化、repository CRUD+查询、UoW 异常回滚。
+- 补实现：完成 `mongo.client/collections/indexes` 与 `redis.client` 最小可用实现，支持后续 datahub/task_engine 接入。
+- 补实现：完成 `factor/task/market_data` repository in-memory 实现，并增强 `strategy/trading` repository snapshot/restore 能力。
+- 补实现：扩展 `MongoUnitOfWork` 聚合 `factor/strategy/trading/task` 仓储，支持进入上下文时快照、异常路径回滚。
+
+**阶段影响**
+- Phase C 退出条件满足：repository CRUD+查询具备 integration test 覆盖，业务层可通过 repository/UoW 访问持久层边界。下一步进入 Phase D（datahub）。
 
 ### 2026-04-08｜Phase B 完成：domain 四子域最小闭环达成
 

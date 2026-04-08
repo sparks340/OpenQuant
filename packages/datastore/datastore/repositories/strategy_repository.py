@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 
 from packages.domain.domain.strategy.entities.rebalance_plan import RebalancePlan
 
@@ -42,3 +43,9 @@ class InMemoryStrategyRepository(StrategyRepository):
             for plan in self._plans.values()
             if plan.strategy_version_id == strategy_version_id
         ]
+    def snapshot(self) -> dict[str, RebalancePlan]:
+        return deepcopy(self._plans)
+
+    def restore(self, state: dict[str, RebalancePlan]) -> None:
+        self._plans = deepcopy(state)
+
