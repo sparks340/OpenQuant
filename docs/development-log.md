@@ -11,11 +11,11 @@
 | datastore | 已完成 | Mongo/Redis 客户端管理、Repository 与 UoW 已补齐，含 CRUD+查询 integration tests |
 | datahub | 已完成 | 已落地 CSV/Tushare(Stub) 适配、清洗与标准化入库链路，含 integration tests |
 | factor_engine | 已完成 | 已实现公式校验/执行与最小算子集（RANK/DELAY/TS_MEAN），含可复现单测 |
-| analysis_engine | 未开始 | 待补最小指标与报告产物 |
-| api_service | 进行中 | 目前仅 health/root，业务路由待实现 |
-| task_engine + research_worker | 未开始 | 任务流转未落地 |
-| portfolio_engine | 未开始 | 仓位与订单意图未实现 |
-| risk_engine | 未开始 | 风控规则未实现 |
+| analysis_engine | 已完成 | 已实现去极值/标准化/分组收益/IC 与最小 json 报告，含 deterministic 单测 |
+| api_service | 已完成 | 已补齐因子创建/运行、报告查询、交易查询 API，统一响应模型并可输出 OpenAPI |
+| task_engine + research_worker | 已完成 | 已落地任务投递/消费/状态追踪/分段日志最小闭环，含状态流转测试 |
+| portfolio_engine | 已完成 | 已实现分数到目标仓位与订单意图构建，含稳定性单测 |
+| risk_engine | 已完成 | 已实现单票上限、现金保留、黑名单规则，含逐单判定测试 |
 | broker simulator | 未开始 | 模拟撮合未实现 |
 | trading_engine + trading_worker | 未开始 | 交易主流程未实现 |
 | 真实券商 | 未开始 | 依赖模拟链路稳定后接入 |
@@ -23,9 +23,9 @@
 
 ## 下一步（按优先级）
 
-1. 进入 `analysis_engine` 阶段：补齐最小指标与报告产物。
-2. 通过 `task_engine + research_worker` 异步化研究任务。
-3. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
+1. 进入 `broker simulator` 阶段：补齐模拟撮合与账户/持仓更新。
+2. 推进 `trading_engine + trading_worker`，打通订单意图到路由执行与状态回写。
+3. 完成 MVP 全链路联调与回归测试。
 
 ## 风险与约束
 
@@ -56,9 +56,102 @@
    - `python_executor` 仅提供最小校验，尚未具备真正沙箱执行的资源限制与安全隔离。
    - 算子集目前仅 `RANK/DELAY/TS_MEAN`，后续扩展需保证兼容性与回归测试稳定性。
 
+
+5. **Analysis Engine 统计稳健性风险（Phase F）**
+   - 分组数大于截面样本数时，Top-Bottom 统计可能退化，需确保按“实际最高/最低组”计算。
+   - 输入行字段缺失时若未提前校验，会在运行时触发 `KeyError`，错误信息不可观测。
+   - 当前 IC 采用 Pearson 最小实现，后续扩展到 Spearman/分行业中性化时需补充回归测试。
+
+
+6. **API Service 编排边界风险（Phase G）**
+   - 当前 API 使用进程内存存储因子/运行/报告，仅适用于单进程演示，后续需替换为 datastore 持久化。
+   - 因子运行接口当前同步执行，后续需迁移到 task_engine + research_worker 异步模型并补状态追踪。
+   - 交易查询接口目前返回最小 stub 数据，进入交易阶段前需接入 trading_engine 与 broker simulator 真实状态。
+
+
+7. **Task Engine 可用性风险（Phase H）**
+   - 当前队列与状态存储均为进程内存实现，服务重启后任务上下文会丢失。
+   - worker 目前为单条消费模型，缺少并发消费、重试与死信队列机制。
+   - 任务处理结果仅保留在日志与状态中，尚未与 datastore/task API 做统一持久化查询。
+
+
+8. **Portfolio Engine 策略解释性风险（Phase I）**
+   - 当前权重分配仅基于 score-weight + 单票上限，缺少行业/风格/波动率约束。
+   - 订单意图数量按价格向下取整，存在资金残留与小额碎股误差。
+   - 目前仅输出最小 `reason` 字符串，后续需结构化解释字段便于审计与前端展示。
+
+
+9. **Risk Engine 规则覆盖风险（Phase J）**
+   - 当前规则仅覆盖黑名单/现金保留/单票上限，尚未纳入停牌、涨跌停、当日损失限制等市场微观约束。
+   - 现金与仓位评估按静态快照计算，缺少多订单组合层面的联动校验。
+   - 风控判定结果尚未接入交易执行链路，后续需在 trading_engine 中实现强约束拦截。
+
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-08｜Phase J 完成：risk_engine 最小风控规则闭环
+
+**本次变更**
+- 先补测试：新增 `tests/unit/risk_engine/test_phase_j_risk_engine.py`，覆盖黑名单、现金保留、单票上限与通过路径判定。
+- 补实现：完成 `RiskContext`、`OrderRiskDecision`、`RiskService`，并落地 `blacklist/cash_reserve/max_position_weight` 三条最小规则。
+- 对齐验收：每条订单意图均可获得风控判定结果（approved + reasons）。
+
+**阶段影响**
+- Phase J 退出条件满足：每条订单意图均有风控判定结果。下一步进入 Phase K（broker simulator）。
+
+### 2026-04-08｜Phase I 完成：portfolio_engine 目标仓位与订单意图最小闭环
+
+**本次变更**
+- 先补测试：新增 `tests/unit/portfolio_engine/test_phase_i_portfolio_engine.py`，覆盖目标仓位稳定性、订单意图可解释性、零差值跳单场景。
+- 补实现：完成 `ScoreWeightAllocator`（Top-N + 单票上限）、`TargetBuilder`、`OrderIntentBuilder` 与 `PortfolioService`。
+- 对齐验收：给定资金规模、分数与价格/持仓输入，可稳定输出可解释的调仓计划（目标仓位 + 订单意图）。
+
+**阶段影响**
+- Phase I 退出条件满足：给定资金规模与信号可输出稳定、可解释调仓计划。下一步进入 Phase J（risk_engine）。
+
+### 2026-04-08｜Phase H 完成：task_engine + research_worker 异步任务最小闭环
+
+**本次变更**
+- 先补测试：新增 `tests/integration/task_engine/test_phase_h_task_engine.py`，覆盖任务提交后 `PENDING -> RUNNING -> SUCCEEDED/FAILED` 状态流转可观测性。
+- 补实现：完成 `InMemoryTaskQueue`（producer/consumer）、`InMemoryTaskTracker`、`InMemoryLogTracker` 与 `TaskDispatcher`。
+- 补实现：完成 `ResearchWorker.consume_once` 与 `RUN_FACTOR/RUN_BACKTEST` 最小 job，支持成功/失败路径日志记录。
+- 对齐验收：提交任务后可观察生命周期状态及失败原因，满足 Phase H 最小验收标准。
+
+**阶段影响**
+- Phase H 退出条件满足：任务提交后可观测状态流转（PENDING/RUNNING/SUCCEEDED/FAILED）。下一步进入 Phase I（portfolio_engine）。
+
+### 2026-04-08｜Phase G 完成：api_service 编排接口最小闭环
+
+**本次变更**
+- 先补测试：新增 `tests/unit/api_service/test_phase_g_api_service.py`，覆盖 OpenAPI 路由暴露、因子创建/运行/报告查询链路、交易查询统一响应模型。
+- 补实现：新增 API schema（`common/factor/analysis/trading`）与 in-memory orchestration store，统一返回 `ApiResponse`。
+- 补实现：落地 `factors`、`analysis`、`trading` 路由，并在 `main.py` 注册到应用。
+- 编排边界：API 层仅做请求校验与编排，因子执行委托 `factor_engine`，报告计算委托 `analysis_engine`。
+
+**阶段影响**
+- Phase G 退出条件满足：OpenAPI 可访问，且 API 层不承载核心业务算法，仅进行跨引擎编排。下一步进入 Phase H（task_engine + research_worker）。
+
+### 2026-04-08｜Phase F 复核推进：补齐边界测试与输入校验
+
+**本次变更**
+- 先补测试：扩展 `tests/unit/analysis_engine/test_phase_f_analysis_engine.py`，新增输入顺序无关性、`group_count > sample_size`、必填字段缺失校验场景。
+- 补实现：`AnalysisService.run` 增加 `group_count` 正数校验与行字段完整性校验，缺失字段改为显式 `ValueError`。
+- 补实现：`Top-Bottom` 统计从“固定 1/最大分组号”调整为“实际最低组/最高组”，避免小样本高分组缺失导致指标退化为 0。
+
+**阶段影响**
+- Phase F 退出条件持续满足：报告可稳定产出，且关键统计在边界条件下行为可预测并有 deterministic 单测覆盖。
+
+### 2026-04-08｜Phase F 完成：analysis_engine 指标与报告最小闭环
+
+**本次变更**
+- 先补测试：新增 `tests/unit/analysis_engine/test_phase_f_analysis_engine.py`，覆盖因子值+行情输入后的 IC、分组收益与报告结构 deterministic 校验。
+- 补实现：完成 `outlier.clip_by_mad` 与 `standardize.zscore`，支持因子值预处理（去极值+标准化）。
+- 补实现：完成 `grouping.assign_groups` 与 `ic.pearson_ic`，形成分组收益与 IC 的最小指标集。
+- 补实现：完成 `AnalysisService.run` 与 `report_builder.build_report`，输出最小 JSON 报告产物。
+
+**阶段影响**
+- Phase F 退出条件满足：因子值 + 行情可稳定产出报告，核心指标具备 deterministic 单测覆盖。下一步进入 Phase G（api_service）。
 
 ### 2026-04-08｜Phase E 完成：factor_engine 校验/执行/算子最小闭环
 

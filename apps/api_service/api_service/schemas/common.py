@@ -1,1 +1,15 @@
-"""Placeholder module for the new architecture."""
+"""Common API response schemas."""
+
+from __future__ import annotations
+
+from typing import Generic, TypeVar
+
+from pydantic import BaseModel
+
+T = TypeVar("T")
+
+
+class ApiResponse(BaseModel, Generic[T]):
+    code: str = "OK"
+    message: str = "success"
+    data: T
