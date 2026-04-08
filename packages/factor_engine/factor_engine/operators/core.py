@@ -1,1 +1,3 @@
-"""Placeholder module for the new architecture."""
+"""Operator registry."""
+
+SUPPORTED_OPERATORS = {"RANK", "DELAY", "TS_MEAN"}

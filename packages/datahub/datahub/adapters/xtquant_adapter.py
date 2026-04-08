@@ -1,1 +1,1 @@
-"""Placeholder module for the new architecture."""
+"""Xtquant adapter stub for future extension."""
