@@ -9,7 +9,7 @@
 | core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
 | domain | 已完成 | research/strategy/trading/platform 四子域实体、值对象、领域服务已形成最小闭环并具备纯领域测试覆盖 |
 | datastore | 已完成 | Mongo/Redis 客户端管理、Repository 与 UoW 已补齐，含 CRUD+查询 integration tests |
-| datahub | 未开始 | 待打通数据同步与清洗最小链路 |
+| datahub | 已完成 | 已落地 CSV/Tushare(Stub) 适配、清洗与标准化入库链路，含 integration tests |
 | factor_engine | 未开始 | 待补最小算子与执行器 |
 | analysis_engine | 未开始 | 待补最小指标与报告产物 |
 | api_service | 进行中 | 目前仅 health/root，业务路由待实现 |
@@ -23,8 +23,8 @@
 
 ## 下一步（按优先级）
 
-1. 进入 `datahub` 阶段：补齐数据源适配、清洗与标准化入库链路。
-2. 打通 `factor_engine -> analysis_engine` 的研究链路。
+1. 进入 `factor_engine` 阶段：补齐最小算子集与执行器。
+2. 进入 `analysis_engine` 阶段：补齐最小指标与报告产物。
 3. 通过 `task_engine + research_worker` 异步化研究任务。
 4. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
 
@@ -37,6 +37,17 @@
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-08｜Phase D 完成：datahub 适配/清洗/入库最小链路
+
+**本次变更**
+- 先补测试：新增 `tests/integration/datahub/test_phase_d_datahub.py`，覆盖行情、标的、基础因子三条同步链路的清洗与落库行为。
+- 补实现：完成 `CSVDataAdapter` 与 `TushareDataAdapter(stub)`，统一通过 `DataSourceAdapter` 协议输出原始行数据。
+- 补实现：完成 `market/instrument/base_factor` cleaner 与 `symbol_mapper/trading_calendar` 工具，统一代码、日期、数值格式。
+- 补实现：完成 `sync_market_data/sync_instruments/sync_base_factors` 服务，并补齐 `InMemoryInstrumentRepository` 作为标的入库承载。
+
+**阶段影响**
+- Phase D 退出条件满足：`sync_*` 服务可将样例数据清洗后写入 datastore，字段映射与代码/日期格式统一。下一步进入 Phase E（factor_engine）。
 
 ### 2026-04-08｜Phase C 完成：datastore 客户端/仓储/UoW 与集成测试闭环
 
