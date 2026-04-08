@@ -2,12 +2,12 @@
 
 > 目标：记录 OpenQuant 按 `docs/workflow.md` 推进的阶段进展，保证每次提交可追溯。
 
-## 当前快照（截至 2026-04-07）
+## 当前快照（截至 2026-04-08）
 
 | 阶段 | 状态 | 备注 |
 |---|---|---|
 | core | 进行中 | 基础配置/日志/异常/模型已完成最小实现，后续继续细化 |
-| domain | 进行中 | 已补首批 research/trading/strategy 不变量与纯领域测试，继续扩展子域 |
+| domain | 已完成 | research/strategy/trading/platform 四子域实体、值对象、领域服务已形成最小闭环并具备纯领域测试覆盖 |
 | datastore | 进行中 | 已补 strategy/trading repository 契约与 InMemory UoW 参考实现 |
 | datahub | 未开始 | 待打通数据同步与清洗最小链路 |
 | factor_engine | 未开始 | 待补最小算子与执行器 |
@@ -23,11 +23,10 @@
 
 ## 下一步（按优先级）
 
-1. 进入 `domain` 扩展阶段：继续补齐 strategy/platform 子域实体和值对象不变量。
-2. 并行设计 `datastore` repository 接口契约，确保不向业务层泄漏查询细节。
-3. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
-4. 通过 `task_engine + research_worker` 异步化研究任务。
-5. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
+1. 进入 `datastore` 收敛阶段：补齐 Mongo/Redis 客户端管理、UoW 与集成测试。
+2. 打通 `datahub -> factor_engine -> analysis_engine` 的研究链路。
+3. 通过 `task_engine + research_worker` 异步化研究任务。
+4. 完成 `portfolio/risk/simulator/trading`，跑通 MVP 闭环。
 
 ## 风险与约束
 
@@ -38,6 +37,48 @@
 ---
 
 ## 变更记录（按时间倒序）
+
+### 2026-04-08｜Phase B 完成：domain 四子域最小闭环达成
+
+**本次变更**
+- 先补测试：新增 `tests/unit/domain/test_phase_b_entities_and_services.py`，覆盖 research/strategy/trading/platform 新增实体与服务的关键不变量与迁移规则。
+- 补实现：清理 domain 中剩余 placeholder，补齐 platform（`User/ChatSession/TaskService`）、research（`FactorVersion/FactorValue/AnalysisReport` 与 domain services）、strategy（`StrategyDefinition/StrategyVersion/SignalService`）、trading（`Account/Position/Trade/BrokerConnection` 与 domain services）最小实现。
+- 对齐状态约束：补齐 `StrategyVersion`、`BrokerConnection` 迁移规则与错误路径，保证领域层状态机可测试。
+- 纯领域测试全量通过，形成不依赖数据库/HTTP 的可回归基线。
+
+**阶段影响**
+- Phase B 退出条件满足：domain 四子域具备实体/值对象/领域服务与关键不变量，且测试可执行。下一步可进入 Phase C（datastore）收敛。
+
+### 2026-04-08｜Phase B 跟进：platform 任务日志实体不变量
+
+**本次变更**
+- 先补测试：新增 `tests/unit/domain/test_task_log.py`，覆盖日志级别规范化、创建时间默认值、身份/消息非空与序号正数约束。
+- 补实现：新增 `TaskLogLevel(INFO/WARNING/ERROR)` 与 `TaskLog` 实体，实现 `task_id/message` 非空、`sequence>0`、`created_at` UTC 默认写入。
+- 通过纯领域测试回归，确保 platform 子域日志对象可被后续 task_engine 直接复用。
+
+**阶段影响**
+- platform 子域除 `TaskRecord` 外新增可执行日志实体，任务追踪在 domain 层形成“状态 + 事件”双模型基础。
+
+### 2026-04-08｜Phase B 修正：TaskRecord 构造语义与身份字段约束
+
+**本次变更**
+- 先补测试：新增 `TaskRecord` 创建时间自动生成与身份字段非空校验测试（TDD），用于约束任务记录初始语义。
+- 补实现：`TaskRecord.created_at` 调整为构造时默认写入 UTC 时间，避免记录在首次迁移前缺失创建时间。
+- 补实现：新增 `task_id/task_type` 非空校验，不允许空白标识进入领域模型。
+- 保持生命周期不变量与迁移规则不变，继续通过纯领域单测回归。
+
+**阶段影响**
+- platform 子域任务实体从“可迁移”提升到“可审计（创建时间稳定）+ 可识别（身份字段必填）”，为后续 task_engine 任务追踪提供更稳输入。
+
+### 2026-04-08｜Phase B 跟进：platform 任务生命周期不变量
+
+**本次变更**
+- 完成 `platform.task_record` 生命周期模型，补齐状态迁移约束（PENDING/RUNNING/SUCCESS/FAILED）与时间戳字段一致性校验。
+- 约束失败态必须显式提供 `error_message`，成功态禁止携带错误信息，避免任务结果语义不清。
+- 新增 `tests/unit/domain/test_task_record.py`，覆盖合法迁移、非法跳转与失败原因必填等规则。
+
+**阶段影响**
+- platform 子域开始具备可执行任务状态约束，可作为后续 `task_engine + research_worker` 状态机的领域基座。
 
 ### 2026-04-07｜Phase C 启动：repository 契约与 UoW 参考实现
 
